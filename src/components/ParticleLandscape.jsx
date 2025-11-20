@@ -11,6 +11,7 @@ uniform vec3 uColorA;
 uniform vec3 uColorB;
 uniform float uColorTime;
 uniform vec3 uRippleColor;
+uniform float uRippleStrength;
 
 attribute vec3 aOriginalPos;
 
@@ -39,7 +40,10 @@ void main() {
           float dist = distance(pos.xz, center);
           
           float speed = 15.0;
-          float waveLength = 4.0;
+          // Scale wavelength with strength (1-20)
+          // At 1: 4.5
+          // At 20: 14.0
+          float waveLength = 4.0 + uRippleStrength * 0.5;
           float frequency = 6.28 / waveLength;
           float currentRadius = time * speed;
           
@@ -48,18 +52,35 @@ void main() {
               float distDamp = 1.0 / (1.0 + dist * 0.1);
               // Slower time decay for longer lasting ripples
               float timeDamp = exp(-time * 0.05);
-              // Wider wave packet to show more rings
-              float packetDamp = exp(-abs(distFromFront) * 0.1);
+              
+              // Normalize strength 1-20 -> 0-1
+              float t = uRippleStrength / 20.0;
+              
+              // Quadratic interpolation for amplitude
+              // Scaled down by factor of 3 as requested
+              // Min (1): ~0.7
+              // Max (20): ~16.0
+              float targetAmplitude = mix(0.7, 16.0, t * t);
+              
+              // Wider wave packet to show more rings at higher strength
+              float packetWidth = 0.1 / max(1.0, uRippleStrength * 0.5);
+              float packetDamp = exp(-abs(distFromFront) * packetWidth);
+              
               float totalDamp = distDamp * timeDamp * packetDamp;
               
               float wave = sin(frequency * distFromFront);
-              float displacement = wave * 3.0 * totalDamp;
+              
+              float displacement = wave * targetAmplitude * totalDamp;
               
               totalRipple += displacement;
               
-              // Use absolute displacement to color both peaks and troughs
-              // Lower threshold to keep color visible longer
-              float intensity = smoothstep(0.05, 1.0, abs(displacement));
+              // For color, we want it to last longer and be visible even when wave is small due to distance
+              // So we use the wave signal within the packet, ignoring distance damping
+              float signal = wave * packetDamp;
+              float intensity = smoothstep(0.1, 0.9, abs(signal));
+              
+              // Optional: slight time fade for color, but much slower than wave height
+              intensity *= exp(-time * 0.01);
               
               if (intensity > 0.0) {
                   // Use uniform ripple color
@@ -74,7 +95,6 @@ void main() {
   pos.y = baseHeight + totalRipple;
   
   // Color Transition Logic
-  // Wave spreading from center (0,0)
   float distFromCenter = length(pos.xz);
   float colorSpeed = 20.0;
   float colorWaveFront = uColorTime * colorSpeed;
@@ -123,7 +143,7 @@ void main() {
       gl_PointSize *= (1.0 + sparkleIntensity * 6.0 * flicker);
   }
   
-  vAlpha = 1.0 - smoothstep(50.0, 70.0, distFromCenter);
+  vAlpha = 1.0 - smoothstep(80.0, 100.0, distFromCenter);
   
   // Keep sparkles fully opaque even at edges
   if (sparkleIntensity > 0.0) {
@@ -144,13 +164,14 @@ void main() {
 }
 `
 
-export default function ParticleLandscape({ targetColor, rippleColor }) {
+export default function ParticleLandscape({ targetColor, rippleColor, rippleStrength }) {
     const mesh = useRef()
     const { camera, raycaster } = useThree()
 
     // Grid settings
-    const rows = 408
-    const cols = 408
+    // Expanded grid (approx 4x area, 2x linear)
+    const rows = 800
+    const cols = 800
     const count = rows * cols
     const spacing = 0.25
 
@@ -161,10 +182,19 @@ export default function ParticleLandscape({ targetColor, rippleColor }) {
             uColorA: { value: new THREE.Color('#ffffff') },
             uColorB: { value: new THREE.Color('#ffffff') },
             uColorTime: { value: 1000.0 }, // Finished
-            uRippleColor: { value: new THREE.Color('#00ffff') }
+            uRippleColor: { value: new THREE.Color('#00ffff') },
+            uRippleStrength: { value: 1.0 }
         }),
         []
     )
+
+    // Handle ripple strength change
+    useEffect(() => {
+        if (mesh.current) {
+            console.log("Setting ripple strength:", rippleStrength)
+            mesh.current.material.uniforms.uRippleStrength.value = rippleStrength
+        }
+    }, [rippleStrength])
 
     // Handle ripple color change
     useEffect(() => {
@@ -246,6 +276,9 @@ export default function ParticleLandscape({ targetColor, rippleColor }) {
     // Handle click
     useEffect(() => {
         const handleClick = (e) => {
+            // Prevent ripples when clicking on UI
+            if (e.target.nodeName !== 'CANVAS') return
+
             const x = (e.clientX / window.innerWidth) * 2 - 1
             const y = -(e.clientY / window.innerHeight) * 2 + 1
             const mouse = new THREE.Vector2(x, y)

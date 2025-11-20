@@ -1,6 +1,6 @@
 import React from 'react'
 
-export default function UI({ color, onColorChange, rippleColor, onRippleColorChange }) {
+export default function UI({ color, onColorChange, rippleColor, onRippleColorChange, rippleStrength, onRippleStrengthChange }) {
     return (
         <div style={{
             position: 'absolute',
@@ -42,7 +42,22 @@ export default function UI({ color, onColorChange, rippleColor, onRippleColorCha
                     height: '30px',
                     border: 'none',
                     cursor: 'pointer',
-                    background: 'none'
+                    background: 'none',
+                    marginBottom: '10px'
+                }}
+            />
+
+            <label style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px' }}>Ripple Strength: {rippleStrength}</label>
+            <input
+                type="range"
+                min="1"
+                max="20"
+                step="1"
+                value={rippleStrength}
+                onChange={(e) => onRippleStrengthChange(parseInt(e.target.value, 10))}
+                style={{
+                    width: '100%',
+                    cursor: 'pointer'
                 }}
             />
         </div>
