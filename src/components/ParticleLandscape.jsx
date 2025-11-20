@@ -4,14 +4,13 @@ import * as THREE from 'three'
 
 const vertexShader = `
 uniform float uTime;
-// x, z = center, y = time, w = active (1.0) or not (0.0)
+// x, z = center, y = time, w = strength (0.0 = inactive)
 uniform vec4 uRipples[20]; 
 
 uniform vec3 uColorA;
 uniform vec3 uColorB;
 uniform float uColorTime;
 uniform vec3 uRippleColor;
-uniform float uRippleStrength;
 
 attribute vec3 aOriginalPos;
 
@@ -33,8 +32,9 @@ void main() {
   // Loop through all potential ripples
   for (int i = 0; i < 20; i++) {
       vec4 rippleData = uRipples[i];
+      float strength = rippleData.w;
       
-      if (rippleData.w > 0.5) {
+      if (strength > 0.0) {
           vec2 center = rippleData.xz;
           float time = rippleData.y;
           float dist = distance(pos.xz, center);
@@ -43,7 +43,7 @@ void main() {
           // Scale wavelength with strength (1-20)
           // At 1: 4.5
           // At 20: 14.0
-          float waveLength = 4.0 + uRippleStrength * 0.5;
+          float waveLength = 4.0 + strength * 0.5;
           float frequency = 6.28 / waveLength;
           float currentRadius = time * speed;
           
@@ -54,7 +54,7 @@ void main() {
               float timeDamp = exp(-time * 0.05);
               
               // Normalize strength 1-20 -> 0-1
-              float t = uRippleStrength / 20.0;
+              float t = strength / 20.0;
               
               // Quadratic interpolation for amplitude
               // Scaled down by factor of 3 as requested
@@ -63,7 +63,7 @@ void main() {
               float targetAmplitude = mix(0.7, 16.0, t * t);
               
               // Wider wave packet to show more rings at higher strength
-              float packetWidth = 0.1 / max(1.0, uRippleStrength * 0.5);
+              float packetWidth = 0.1 / max(1.0, strength * 0.5);
               float packetDamp = exp(-abs(distFromFront) * packetWidth);
               
               float totalDamp = distDamp * timeDamp * packetDamp;
@@ -182,19 +182,10 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
             uColorA: { value: new THREE.Color('#ffffff') },
             uColorB: { value: new THREE.Color('#ffffff') },
             uColorTime: { value: 1000.0 }, // Finished
-            uRippleColor: { value: new THREE.Color('#00ffff') },
-            uRippleStrength: { value: 1.0 }
+            uRippleColor: { value: new THREE.Color('#00ffff') }
         }),
         []
     )
-
-    // Handle ripple strength change
-    useEffect(() => {
-        if (mesh.current) {
-            console.log("Setting ripple strength:", rippleStrength)
-            mesh.current.material.uniforms.uRippleStrength.value = rippleStrength
-        }
-    }, [rippleStrength])
 
     // Handle ripple color change
     useEffect(() => {
@@ -260,13 +251,13 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
 
         // Update uniforms
         // We need to map our JS objects to the vec4 array
-        // Let's stick to: x=x, y=time, z=z, w=active
+        // Let's stick to: x=x, y=time, z=z, w=strength
 
         const rippleUniforms = mesh.current.material.uniforms.uRipples.value
         for (let i = 0; i < 20; i++) {
             if (i < ripples.current.length) {
                 const r = ripples.current[i]
-                rippleUniforms[i].set(r.x, r.time, r.z, 1.0)
+                rippleUniforms[i].set(r.x, r.time, r.z, r.strength)
             } else {
                 rippleUniforms[i].set(0, 0, 0, 0.0)
             }
@@ -292,13 +283,14 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
             const intersection = raycaster.ray.intersectPlane(plane, target)
 
             if (intersection) {
-                console.log("Adding ripple at", intersection)
+                console.log("Adding ripple at", intersection, "Strength:", rippleStrength)
                 // Add new ripple
                 if (ripples.current.length < 20) {
                     ripples.current.push({
                         x: intersection.x,
                         z: intersection.z,
-                        time: 0.0
+                        time: 0.0,
+                        strength: rippleStrength
                     })
                 } else {
                     // Replace oldest if full (shift)
@@ -306,7 +298,8 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
                     ripples.current.push({
                         x: intersection.x,
                         z: intersection.z,
-                        time: 0.0
+                        time: 0.0,
+                        strength: rippleStrength
                     })
                 }
             }
@@ -314,7 +307,7 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
 
         window.addEventListener('click', handleClick)
         return () => window.removeEventListener('click', handleClick)
-    }, [camera, raycaster])
+    }, [camera, raycaster, rippleStrength])
 
     return (
         <points ref={mesh} frustumCulled={false}>
