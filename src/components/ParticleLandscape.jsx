@@ -104,7 +104,7 @@ void main() {
   
   vec3 baseColor = mix(uColorB, uColorA, colorMix);
   // Boost base color brightness
-  baseColor *= 2.5;
+  baseColor *= 3.5;
   
   // Blend base color with ripple colors
   if (colorWeight > 0.0) {
@@ -135,7 +135,7 @@ void main() {
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   
-  gl_PointSize = 3.0 * (10.0 / -mvPosition.z);
+  gl_PointSize = 3.5 * (10.0 / -mvPosition.z);
   
   // Boost size for sparkles
   if (sparkleIntensity > 0.0) {
