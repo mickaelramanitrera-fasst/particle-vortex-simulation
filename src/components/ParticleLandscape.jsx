@@ -5,7 +5,7 @@ import * as THREE from 'three'
 const vertexShader = `
 uniform float uTime;
 // x, z = center, y = time, w = strength (0.0 = inactive)
-uniform vec4 uRipples[20]; 
+uniform vec4 uRipples[50]; 
 
 uniform vec3 uColorA;
 uniform vec3 uColorB;
@@ -30,7 +30,7 @@ void main() {
   float colorWeight = 0.0;
   
   // Loop through all potential ripples
-  for (int i = 0; i < 20; i++) {
+  for (int i = 0; i < 50; i++) {
       vec4 rippleData = uRipples[i];
       float strength = rippleData.w;
       
@@ -178,7 +178,7 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
     const uniforms = useMemo(
         () => ({
             uTime: { value: 0 },
-            uRipples: { value: Array.from({ length: 20 }, () => new THREE.Vector4(0, 0, 0, 0)) },
+            uRipples: { value: Array.from({ length: 50 }, () => new THREE.Vector4(0, 0, 0, 0)) },
             uColorA: { value: new THREE.Color('#ffffff') },
             uColorB: { value: new THREE.Color('#ffffff') },
             uColorTime: { value: 1000.0 }, // Finished
@@ -210,6 +210,8 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
     }, [targetColor])
 
     const ripples = useRef([])
+    const isDragging = useRef(false)
+    const lastRipplePos = useRef(new THREE.Vector3())
 
     const [positions, originalPos] = useMemo(() => {
         const positions = new Float32Array(count * 3)
@@ -254,7 +256,7 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
         // Let's stick to: x=x, y=time, z=z, w=strength
 
         const rippleUniforms = mesh.current.material.uniforms.uRipples.value
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 50; i++) {
             if (i < ripples.current.length) {
                 const r = ripples.current[i]
                 rippleUniforms[i].set(r.x, r.time, r.z, r.strength)
@@ -264,14 +266,32 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
         }
     })
 
-    // Handle click
+    // Handle drag interaction
     useEffect(() => {
-        const handleClick = (e) => {
-            // Prevent ripples when clicking on UI
-            if (e.target.nodeName !== 'CANVAS') return
+        const addRipple = (x, z, strength) => {
+            if (ripples.current.length < 50) {
+                ripples.current.push({
+                    x: x,
+                    z: z,
+                    time: 0.0,
+                    strength: strength
+                })
+            } else {
+                // Replace oldest if full (shift)
+                ripples.current.shift()
+                ripples.current.push({
+                    x: x,
+                    z: z,
+                    time: 0.0,
+                    strength: strength
+                })
+            }
+            lastRipplePos.current.set(x, 0, z)
+        }
 
-            const x = (e.clientX / window.innerWidth) * 2 - 1
-            const y = -(e.clientY / window.innerHeight) * 2 + 1
+        const getIntersection = (clientX, clientY) => {
+            const x = (clientX / window.innerWidth) * 2 - 1
+            const y = -(clientY / window.innerHeight) * 2 + 1
             const mouse = new THREE.Vector2(x, y)
 
             raycaster.setFromCamera(mouse, camera)
@@ -280,33 +300,47 @@ export default function ParticleLandscape({ targetColor, rippleColor, rippleStre
             const plane = new THREE.Plane(planeNormal, planeConstant)
             const target = new THREE.Vector3()
 
-            const intersection = raycaster.ray.intersectPlane(plane, target)
+            return raycaster.ray.intersectPlane(plane, target)
+        }
 
+        const handlePointerDown = (e) => {
+            if (e.target.nodeName !== 'CANVAS') return
+            isDragging.current = true
+
+            const intersection = getIntersection(e.clientX, e.clientY)
             if (intersection) {
-                console.log("Adding ripple at", intersection, "Strength:", rippleStrength)
-                // Add new ripple
-                if (ripples.current.length < 20) {
-                    ripples.current.push({
-                        x: intersection.x,
-                        z: intersection.z,
-                        time: 0.0,
-                        strength: rippleStrength
-                    })
-                } else {
-                    // Replace oldest if full (shift)
-                    ripples.current.shift()
-                    ripples.current.push({
-                        x: intersection.x,
-                        z: intersection.z,
-                        time: 0.0,
-                        strength: rippleStrength
-                    })
+                // Initial click uses the slider strength
+                addRipple(intersection.x, intersection.z, rippleStrength)
+            }
+        }
+
+        const handlePointerMove = (e) => {
+            if (!isDragging.current) return
+
+            const intersection = getIntersection(e.clientX, e.clientY)
+            if (intersection) {
+                // Check distance from last ripple to avoid too many ripples
+                const dist = intersection.distanceTo(lastRipplePos.current)
+                if (dist > 2.0) { // Add ripple every 2 units
+                    // Drag wake uses constant strength (2.0)
+                    addRipple(intersection.x, intersection.z, 2.0)
                 }
             }
         }
 
-        window.addEventListener('click', handleClick)
-        return () => window.removeEventListener('click', handleClick)
+        const handlePointerUp = () => {
+            isDragging.current = false
+        }
+
+        window.addEventListener('pointerdown', handlePointerDown)
+        window.addEventListener('pointermove', handlePointerMove)
+        window.addEventListener('pointerup', handlePointerUp)
+
+        return () => {
+            window.removeEventListener('pointerdown', handlePointerDown)
+            window.removeEventListener('pointermove', handlePointerMove)
+            window.removeEventListener('pointerup', handlePointerUp)
+        }
     }, [camera, raycaster, rippleStrength])
 
     return (

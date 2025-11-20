@@ -83,7 +83,7 @@ export default function UI({ color, onColorChange, rippleColor, onRippleColorCha
                 borderRadius: '20px',
                 backdropFilter: 'blur(4px)'
             }}>
-                Click on the particles to create ripples
+                Click or drag the particles to create ripples and wakes
             </div>
         </>
     )
